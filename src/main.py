@@ -19,7 +19,7 @@ from settings import WIDTH, HEIGHT, FPS
 from particle import CheckpointParticles as CheckpointEffect
 from background import ParallaxBackground
 from score_manager import save_score, get_score  
-
+import menu
 
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -203,6 +203,37 @@ level_path = level_path_for(current_level)
 tilemap = TileMap(str(level_path))
 checkpoint_effects = [CheckpointEffect(tx, ty) for tx, ty in tilemap.checkpoints()]
 
+
+def autosave_score(score):
+    if not menu.current_user:
+        print("[score] No user logged in, skipping autosave.")
+        return
+    try:
+        save_score(menu.current_user, score)
+        print(f"[score] Autosaved {score} pts for {menu.current_user}")
+    except Exception as e:
+        print("[score] Autosave failed:", e)
+
+
+def find_safe_spawn(tm, fallback=(100, 100)):
+    safe_x = 3  
+
+    for y in range(tm.height - 2, 0, -1):
+        here = tm.tile_at(safe_x, y)
+        below = tm.tile_at(safe_x, y + 1)
+        above = tm.tile_at(safe_x, y - 1)
+
+        if below == 'X' and here == '.' and above == '.':
+            spawn_x = safe_x * TILE_SIZE
+            spawn_y = (y * TILE_SIZE) - TILE_SIZE // 2  
+            print(f"[spawn] bottom-left safe spawn at ({spawn_x}, {spawn_y})")
+            return spawn_x, spawn_y
+
+    print("[spawn] No left ground found — using fallback.")
+    return fallback
+
+
+
 def start_of_level_spawn_three_in(tm, fallback=(100, 100)):
     for y in range(tm.height - 1, -1, -1):
         for x in range(tm.width):
@@ -213,10 +244,11 @@ def start_of_level_spawn_three_in(tm, fallback=(100, 100)):
     return fallback
 
 
-RESPAWN_POS = start_of_level_spawn_three_in(tilemap, fallback=(100, 100))
-FIXED_SPAWN_POS = RESPAWN_POS   
+RESPAWN_POS = find_safe_spawn(tilemap, fallback=(100, 100))
+FIXED_SPAWN_POS = RESPAWN_POS
 player = Player(RESPAWN_POS[0], RESPAWN_POS[1], sprites=PLAYER_SPRITES)
-hud = HUD(font)
+hud = HUD(font, username=menu.current_user or "Guest")
+user_score = get_score(menu.current_user) if menu.current_user else 0
 
 def make_enemies_from_tilemap(tm):
     group = pygame.sprite.Group()
@@ -300,26 +332,25 @@ victory = False
 def respawn_player(at_checkpoint=True):
     """
     Place player at checkpoint (if active and requested) or level start spawn.
-    Must fully reset motion and relevant flags so falling deaths don't persist.
+    Ensures player is within level bounds and resets movement safely.
     """
-    global player, checkpoint_pos, RESPAWN_POS
+    global player, checkpoint_pos, RESPAWN_POS, FIXED_SPAWN_POS
 
     try:
         if at_checkpoint and checkpoint_active and checkpoint_pos:
             spawn_x, spawn_y = checkpoint_pos
         else:
             spawn_x, spawn_y = FIXED_SPAWN_POS
-
     except Exception:
         spawn_x, spawn_y = 64, 64
 
     player.rect.topleft = (int(spawn_x), int(spawn_y))
     player.vx = 0
     player.vy = 0
-    player.invulnerable = 0
-    player.on_ground = False         
-    player.can_double_jump = True   
-    player.facing_right = True      
+    player.invulnerable = 120  
+    player.on_ground = False
+    player.can_double_jump = True
+    player.facing_right = True
     try:
         player.collidable = True
     except Exception:
@@ -335,13 +366,13 @@ def respawn_player(at_checkpoint=True):
     except Exception:
         pass
 
-    try:
-        global dead, await_continue, game_over
-        dead = False
-        await_continue = False
-        game_over = False if lives > 0 else game_over
-    except Exception:
-        pass
+    global dead, await_continue, game_over
+    dead = False
+    await_continue = False
+    game_over = False if lives > 0 else game_over
+
+    print(f"[respawn] Player respawned at ({spawn_x}, {spawn_y})")
+
 
 def full_restart(start_level_idx=0, keep_lives=False, keep_score=False):
     """
@@ -353,6 +384,7 @@ def full_restart(start_level_idx=0, keep_lives=False, keep_score=False):
     global victory, level_path, dead, await_continue, game_over
 
     current_level = start_level_idx
+
     if not keep_score:
         score = 0
     coins_collected = 0
@@ -364,7 +396,7 @@ def full_restart(start_level_idx=0, keep_lives=False, keep_score=False):
     enemies = make_enemies_from_tilemap(tilemap)
 
     global FIXED_SPAWN_POS
-    FIXED_SPAWN_POS = start_of_level_spawn_three_in(tilemap, fallback=(100, 100))
+    FIXED_SPAWN_POS = find_safe_spawn(tilemap, fallback=(100, 100))
     checkpoint_pos = FIXED_SPAWN_POS
     checkpoint_active = False
     checkpoint_pos = None
@@ -427,7 +459,7 @@ def start_specific_level(filename):
         tilemap = TileMap(str(level_path))
         enemies = make_enemies_from_tilemap(tilemap)
         checkpoint_effects = [CheckpointEffect(tx, ty) for tx, ty in tilemap.checkpoints()]
-        FIXED_SPAWN_POS = start_of_level_spawn_three_in(tilemap, fallback=(100, 100))
+        FIXED_SPAWN_POS = find_safe_spawn(tilemap, fallback=(100, 100))
         checkpoint_pos = FIXED_SPAWN_POS
         checkpoint_active = False
         checkpoint_tile = None
@@ -513,8 +545,8 @@ def listen_for_word(target, timeout=5):
     return False, spoken_text
 
 
-from menu import current_user
-username = current_user or ""
+username = menu.current_user or "Guest"
+save_score(username, score)
 score = 0
 hud = HUD(font, username=username)
 
@@ -568,11 +600,7 @@ while running:
 
                                 if lives <= 0:
                                     game_over = True
-                                    try:
-                                        save_score(username, score)
-                                        print(f"[score] Saved {score} points for user '{username}'")
-                                    except Exception as e:
-                                        print("Failed to save score:", e)
+                                    autosave_score(score)
                                     await_continue = False
                                     print("[speech] No lives left -> game over")
 
@@ -584,6 +612,7 @@ while running:
                         print("[action] C pressed on Game Over")
                         if lives > 0:
                             lives -= 1
+                            autosave_score(score)
                             print("[lives change] consumed on C (gameover) ->", lives)
                             game_over = False
                             dead = False
@@ -597,6 +626,7 @@ while running:
 
                     if ev.key == pygame.K_r:
                         print("[action] R pressed on Game Over -> restart level")
+                        autosave_score(score)
                         tilemap, enemies = full_restart(current_level, keep_score=False)
                         game_over = False
                         dead = False
@@ -606,14 +636,12 @@ while running:
                 if ev.key == pygame.K_ESCAPE:
                     choice = show_pause_menu(screen, clock, font)
                     if choice == "quit":
+                        autosave_score(score)
+                        score = 0
                         running = False
                         break
                     if choice == "menu":
-                        try:
-                            save_score(username, score)
-                            print(f"[score] Saved {score} for {username}")
-                        except Exception as e:
-                            print("Failed to save score:", e)
+                        autosave_score(score)
                         score = 0
                         try: play_music("menu")
                         except: pass
@@ -635,6 +663,8 @@ while running:
 
                         #tilemap, enemies = full_restart(0)
                     if choice == "restart":
+                        autosave_score(score)
+                        score = 0
                         tilemap, enemies = full_restart(current_level, keep_score=False)
 
                         continue
@@ -670,9 +700,14 @@ while running:
                 if PAUSE_BTN.collidepoint(ev.pos):
                     choice = show_pause_menu(screen, clock, font)
                     if choice == "quit":
+                        autosave_score(score)
+                        score = 0
                         running = False
                         break
                     if choice == "menu":
+                        autosave_score(score)
+                        score = 0
+
                         try: play_music("menu")
                         except: pass
 
@@ -691,6 +726,8 @@ while running:
                             break
                         continue
                     if choice == "restart":
+                        autosave_score(score)
+                        score = 0
                         tilemap, enemies = full_restart(current_level, keep_score=False)
                         continue
                     if choice == "settings":
@@ -754,12 +791,8 @@ while running:
                     victory = True
                     game_over = False
                     dead = False
-                    try:
-                        save_score(username, score)
-                        print(f"[score] Saved {score} points for user '{username}'")
-                    except Exception as e:
-                        print("Failed to save score:", e)
-
+                    autosave_score(score)
+                    score = 0
                     try: play_sfx("win")
                     except: pass
                     try: play_music("win")
@@ -768,7 +801,7 @@ while running:
                     level_path = level_path_for(current_level)
                     tilemap = TileMap(str(level_path))
                     enemies = make_enemies_from_tilemap(tilemap)
-                    checkpoint_pos = start_of_level_spawn_three_in(tilemap,
+                    checkpoint_pos = find_safe_spawn(tilemap,
                                                                   fallback=RESPAWN_POS)
                     checkpoint_active = False
                     hud.checkpoint_timer = 0
@@ -815,12 +848,8 @@ while running:
                     dead = True
                     await_continue = False
                     death_time = pygame.time.get_ticks()
-                    try:
-                        save_score(username, score)
-                        print(f"[score] Saved {score} points for user '{username}'")
-                    except Exception as e:
-                        print("Failed to save score:", e)
-
+                    autosave_score(score)
+                    score = 0
                     try: play_sfx("gameover")
                     except: pass
                     print("[death] no lives -> game over")
@@ -914,6 +943,8 @@ while running:
             screen.blit(small, small.get_rect(center=(WIDTH//2, HEIGHT//2 + 36)))
 
         if victory:
+            # autosave_score(score)
+            # score = 0
             go_font = pygame.font.SysFont(None, 72)
             txt = go_font.render("YOU WIN!", True, (120,240,160))
             screen.blit(txt, txt.get_rect(center=(WIDTH//2, HEIGHT//2 - 20)))

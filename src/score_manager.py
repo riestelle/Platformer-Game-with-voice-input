@@ -1,4 +1,4 @@
-import json, os, time
+import json, os, time, sys
 
 SCORE_FILE = os.path.join(os.path.dirname(__file__), "scores.json")
 BACKUP_FILE = SCORE_FILE + ".bak"
@@ -17,38 +17,48 @@ def _load_scores():
 
 
 def _save_scores(scores):
-    """Write JSON safely with backup."""
+    """Write JSON safely with backup and guaranteed flush."""
     try:
+        os.makedirs(os.path.dirname(SCORE_FILE), exist_ok=True)
+
         with open(BACKUP_FILE, "w", encoding="utf-8") as f:
             json.dump(scores, f, indent=4)
+            f.flush()
+            os.fsync(f.fileno())  
+
         os.replace(BACKUP_FILE, SCORE_FILE)
+
+        print(f"[score_manager] Saved scores to {SCORE_FILE} ({len(scores)} users).")
+
     except Exception as e:
-        print("[score_manager] Error saving scores:", e)
+        print("[score_manager] Error saving scores:", e, file=sys.stderr)
 
 
 def save_score(username: str, score: int):
     """Update the user's best score and save history with timestamps."""
     if not username:
+        print("[score_manager] No username provided, skipping save.")
         return
+
     scores = _load_scores()
     user_data = scores.get(username, {"best": 0, "history": []})
 
-    # Append to history
     user_data["history"].append({
-        "score": score,
+        "score": int(score),
         "time": time.strftime("%Y-%m-%d %H:%M:%S")
     })
 
-    # Update best if higher
     if score > user_data["best"]:
         user_data["best"] = score
 
     scores[username] = user_data
     _save_scores(scores)
 
+    print(f"[score_manager] Recorded score {score} for {username}.")
+
 
 def get_score(username: str):
-    """Return only the best numeric score for the user."""
+    """Return best numeric score for the user."""
     if not username:
         return 0
     scores = _load_scores()
@@ -65,13 +75,9 @@ def get_highest_score():
     scores = _load_scores()
     best_user, best_val = None, 0
     for user, data in scores.items():
-        if isinstance(data, dict):
-            best = data.get("best", 0)
-        else:
-            best = data
+        best = data.get("best", 0) if isinstance(data, dict) else data
         if best > best_val:
-            best_val = best
-            best_user = user
+            best_user, best_val = user, best
     return best_user, best_val
 
 

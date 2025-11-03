@@ -236,35 +236,3 @@ class Player(pygame.sprite.Sprite):
                 surface.blit(img, draw_pos)
         else:
             surface.blit(img, draw_pos)
-
-def find_safe_spawn(tm, fallback=(100, 100)):
-    """
-    Scan the tilemap for a safe spawn location.
-    Prefers solid ground with air above, avoids spikes and edges.
-    """
-    safe_spots = []
-    ground_tiles = tm.coll_tiles()
-    spike_coords = set(tm.spikes())
-
-    for y in range(tm.height - 2, 1, -1):  
-        for x in range(1, tm.width - 1):   
-            here = tm.tile_at(x, y)
-            below = tm.tile_at(x, y + 1)
-            above1 = tm.tile_at(x, y - 1)
-            above2 = tm.tile_at(x, y - 2)
-
-            if below == 'X' and here == '.' and above1 == '.' and above2 == '.':
-                nearby_spike = any(abs(sx - x) <= 1 and abs(sy - y) <= 1 for sx, sy in spike_coords)
-                if nearby_spike:
-                    continue
-                safe_spots.append((x, y))
-    if safe_spots:
-        mid_x = tm.width // 2
-        safe_spots.sort(key=lambda p: (abs(p[0] - mid_x), -p[1])) 
-        x, y = safe_spots[0]
-        return x * TILE_SIZE, y * TILE_SIZE
-
-    print("[spawn] No valid ground found, using fallback:", fallback)
-    return fallback
-
-
