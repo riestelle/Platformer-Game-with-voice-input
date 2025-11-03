@@ -1,0 +1,41 @@
+# settings.py
+WIDTH = 960
+HEIGHT = 640
+FPS = 60
+
+TILE_SIZE = 48
+
+
+GRAVITY = 0.75         
+JUMP_VELOCITY = -18     
+PLAYER_SPEED = 5.5    
+
+COYOTE_TIME = 0.12        
+JUMP_BUFFER_TIME = 0.10  
+
+ALLOW_DOUBLE_JUMP = True
+ALLOW_WALL_JUMP = True
+ALLOW_DASH = True
+
+DASH_SPEED = 14.0            
+DASH_DURATION_MS = 120
+DASH_COOLDOWN_MS = 600
+
+ENABLE_CHECKPOINTS = True
+
+BG_COLOR = (30, 36, 52)
+HUD_COLOR = (240, 240, 240)
+COIN_COLOR = (255, 200, 60)
+TILE_COLOR = (120, 120, 140)
+SPIKE_COLOR = (200, 60, 60)
+ENEMY_COLOR = (220, 80, 80)
+CHECKPOINT_COLOR = (80, 200, 120)
+
+
+ASSET_PLAYER = "../assets/player.png"
+ASSET_ENEMY = "../assets/enemy.png"
+ASSET_COIN = "../assets/coin.png"
+ASSET_UI_COIN = "../assets/ui/coin.png"
+ASSET_UI_LIFE = "../assets/ui/life.png"
+
+DEBUG_DRAW_COLLIDERS = False

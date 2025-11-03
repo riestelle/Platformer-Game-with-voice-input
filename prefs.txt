@@ -1,0 +1,2 @@
+show_tutorial=False
+show_quick_tips=True
