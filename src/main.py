@@ -18,6 +18,7 @@ from audio import init_audio, play_music, play_sfx, stop_music, set_volumes
 from settings import WIDTH, HEIGHT, FPS
 from particle import CheckpointParticles as CheckpointEffect
 from background import ParallaxBackground
+from score_manager import save_score, get_score  
 
 
 pygame.init()
@@ -342,17 +343,18 @@ def respawn_player(at_checkpoint=True):
     except Exception:
         pass
 
-def full_restart(start_level_idx=0, keep_lives=False):
+def full_restart(start_level_idx=0, keep_lives=False, keep_score=False):
     """
     start_level_idx: index of level to load
-    keep_lives: if True, don't reset lives/counts (useful for 'continue' behaviour)
+    keep_lives: if True, don't reset lives/counts 
     """
     global score, lives, tilemap, enemies, coins_collected
     global checkpoint_pos, checkpoint_active, current_level
     global victory, level_path, dead, await_continue, game_over
 
     current_level = start_level_idx
-    score = 0
+    if not keep_score:
+        score = 0
     coins_collected = 0
     if not keep_lives:
         lives = 3
@@ -395,7 +397,8 @@ def start_specific_level(filename):
     checkpoint_tile = None
     checkpoint_effects = []
     hud.checkpoint_timer = 0
-
+    global score
+    score = 0 
     dead = False
     await_continue = False
     game_over = False
@@ -448,12 +451,15 @@ def menu_start_cb():
     await_continue = False
     game_over = False
     victory = False
+    score = 0
     full_restart(0)
 
 
 def menu_levels_cb(filename=None):
+    global score
     if filename:
         try:
+            score = 0
             start_specific_level(filename)
             return "start"
         except Exception as e:
@@ -480,7 +486,7 @@ DASH_KEYS = (pygame.K_LSHIFT, pygame.K_RSHIFT, pygame.K_e)
 import speech_recognition as sr
 import random
 
-SPEECH_WORDS = ["jump", "banana", "restart", "gravity", "checkpoint", "speed", "coin", "level", "enemy", "dash"]
+SPEECH_WORDS = ["jump", "banana", "restart", "gravity", "checkpoint", "speed", "coin", "level", "enemy", "dash", "run", "jump", "tres"]
 
 current_speech_word = None
 speech_prompt_time = 0
@@ -507,6 +513,10 @@ def listen_for_word(target, timeout=5):
     return False, spoken_text
 
 
+from menu import current_user
+username = current_user or ""
+score = 0
+hud = HUD(font, username=username)
 
 running = True
 while running:
@@ -558,6 +568,11 @@ while running:
 
                                 if lives <= 0:
                                     game_over = True
+                                    try:
+                                        save_score(username, score)
+                                        print(f"[score] Saved {score} points for user '{username}'")
+                                    except Exception as e:
+                                        print("Failed to save score:", e)
                                     await_continue = False
                                     print("[speech] No lives left -> game over")
 
@@ -582,7 +597,7 @@ while running:
 
                     if ev.key == pygame.K_r:
                         print("[action] R pressed on Game Over -> restart level")
-                        tilemap, enemies = full_restart(current_level)
+                        tilemap, enemies = full_restart(current_level, keep_score=False)
                         game_over = False
                         dead = False
                         await_continue = False
@@ -594,6 +609,12 @@ while running:
                         running = False
                         break
                     if choice == "menu":
+                        try:
+                            save_score(username, score)
+                            print(f"[score] Saved {score} for {username}")
+                        except Exception as e:
+                            print("Failed to save score:", e)
+                        score = 0
                         try: play_music("menu")
                         except: pass
 
@@ -603,10 +624,10 @@ while running:
                         checkpoint_effects = []
                         hud.checkpoint_timer = 0
 
-                        ret = show_main_menu(screen, clock, font,
-                                            start_cb=menu_start_cb,
-                                            levels_cb=menu_levels_cb,
-                                            settings_cb=menu_settings_cb)
+                        ret = show_main_menu(screen, clock, font, 
+                                             start_cb=menu_start_cb, 
+                                             levels_cb=menu_levels_cb, 
+                                             settings_cb=menu_settings_cb)
                         if ret == "quit":
                             running = False
                             break
@@ -614,7 +635,8 @@ while running:
 
                         #tilemap, enemies = full_restart(0)
                     if choice == "restart":
-                        tilemap, enemies = full_restart(current_level)
+                        tilemap, enemies = full_restart(current_level, keep_score=False)
+
                         continue
                     if choice == "settings":
                         sret = show_settings_menu(screen, clock, font)
@@ -669,7 +691,7 @@ while running:
                             break
                         continue
                     if choice == "restart":
-                        tilemap, enemies = full_restart(current_level)
+                        tilemap, enemies = full_restart(current_level, keep_score=False)
                         continue
                     if choice == "settings":
                         show_settings_menu(screen, clock, font)
@@ -732,6 +754,12 @@ while running:
                     victory = True
                     game_over = False
                     dead = False
+                    try:
+                        save_score(username, score)
+                        print(f"[score] Saved {score} points for user '{username}'")
+                    except Exception as e:
+                        print("Failed to save score:", e)
+
                     try: play_sfx("win")
                     except: pass
                     try: play_music("win")
@@ -787,6 +815,12 @@ while running:
                     dead = True
                     await_continue = False
                     death_time = pygame.time.get_ticks()
+                    try:
+                        save_score(username, score)
+                        print(f"[score] Saved {score} points for user '{username}'")
+                    except Exception as e:
+                        print("Failed to save score:", e)
+
                     try: play_sfx("gameover")
                     except: pass
                     print("[death] no lives -> game over")
@@ -831,11 +865,11 @@ while running:
                         print("[continue poll] no lives left")
             if keys[pygame.K_r]:
                 pygame.time.delay(120)
-                tilemap, enemies = full_restart(current_level)
+                ttilemap, enemies = full_restart(current_level, keep_score=False)
                 game_over = False
                 dead = False
                 await_continue = False
-
+        hud.update(dt, score)
         background.draw(screen, cam)
         tileset = {'C': ICON_COIN} if ICON_COIN else None
 

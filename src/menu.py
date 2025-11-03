@@ -3,6 +3,15 @@ import pygame, os, math, json
 from settings import WIDTH, HEIGHT, BG_COLOR
 import re
 import random
+
+import pygame, os, math, json, re, random
+from settings import WIDTH, HEIGHT, BG_COLOR
+from score_manager import save_score, get_score 
+
+current_user = None
+current_score = 0
+
+
 ASSET_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "assets", "audio"))
 CFG_PATH = os.path.join(os.path.dirname(__file__), "menu_config.json")
 
@@ -192,32 +201,41 @@ def draw_parallax(surf, t):
                          pygame.Rect(-120 + (i*320) - offset, HEIGHT//1.9 + i*6, 320, 100), border_radius=20)
 
 def show_main_menu(screen, clock, font, start_cb=None, levels_cb=None, settings_cb=None):
-
     pygame.event.clear()
-    global LAST_LEVEL_PATH
-    LAST_LEVEL_PATH = None   
+    global LAST_LEVEL_PATH, current_user, score
+    LAST_LEVEL_PATH = None
     audio = ensure_audio()
     if audio:
         audio.play_music("menu")
 
-    t0 = pygame.time.get_ticks()
+    #  Score setup 
+    from score_manager import get_highest_score, get_score
+    if not current_user:
+        current_user = None
 
-    #  Buttons 
+    # Initial score info
+    user_score = get_score(current_user) if current_user else 0
+    top_user, top_score = get_highest_score()
+
+    t0 = pygame.time.get_ticks()
+    login_rect = pygame.Rect(WIDTH - 160, 20, 140, 40)
+    idx = 0
+    particles = []
+
+    # Buttons 
     buttons = [
         Button("Start Game", WIDTH // 2, HEIGHT // 2 - 10),
         Button("Levels", WIDTH // 2, HEIGHT // 2 + 68),
         Button("Settings", WIDTH // 2, HEIGHT // 2 + 146),
         Button("Quit", WIDTH // 2, HEIGHT // 2 + 224),
     ]
-    idx = 0
 
     #  Menu Loop 
-    particles = []
     while True:
         dt = clock.tick(60)
         t = pygame.time.get_ticks()
 
-        #  Event Handling 
+        #  Events 
         for ev in pygame.event.get():
             if ev.type == pygame.QUIT:
                 if audio: audio.stop_music()
@@ -227,32 +245,30 @@ def show_main_menu(screen, clock, font, start_cb=None, levels_cb=None, settings_
                 if ev.key in (pygame.K_DOWN, pygame.K_s):
                     idx = (idx + 1) % len(buttons)
                     if audio: audio.play_hover()
-                if ev.key in (pygame.K_UP, pygame.K_w):
+                elif ev.key in (pygame.K_UP, pygame.K_w):
                     idx = (idx - 1) % len(buttons)
                     if audio: audio.play_hover()
-                if ev.key in (pygame.K_RETURN, pygame.K_z, pygame.K_SPACE):
+                elif ev.key in (pygame.K_RETURN, pygame.K_z, pygame.K_SPACE):
                     if audio: audio.play_select()
                     txt = buttons[idx].text
                     if txt == "Start Game":
+                        score = 0
                         if start_cb:
-                            if LAST_LEVEL_PATH and os.path.exists(LAST_LEVEL_PATH):
-                                start_cb(LAST_LEVEL_PATH)
-                            else:
-                                start_cb()
+                            path = LAST_LEVEL_PATH if LAST_LEVEL_PATH and os.path.exists(LAST_LEVEL_PATH) else None
+                            start_cb(path) if path else start_cb()
                         if audio: audio.play_music("game")
                         return "start"
-                    if txt == "Levels":
-                        if levels_cb:
-                            res = show_levels_menu(screen, clock, font, start_cb=levels_cb)
-                            if res == "start":
-                                return "start"
-                    if txt == "Settings":
+                    elif txt == "Levels" and levels_cb:
+                        score = 0
+                        res = show_levels_menu(screen, clock, font, start_cb=levels_cb)
+                        if res == "start": return "start"
+                    elif txt == "Settings":
                         show_settings_menu(screen, clock, font)
-                    if txt == "Quit":
+                    elif txt == "Quit":
                         if audio: audio.stop_music()
                         return "quit"
 
-            if ev.type == pygame.MOUSEMOTION:
+            elif ev.type == pygame.MOUSEMOTION:
                 for i, b in enumerate(buttons):
                     prev = b.hovered
                     b.hovered = b.rect.collidepoint(ev.pos)
@@ -261,33 +277,38 @@ def show_main_menu(screen, clock, font, start_cb=None, levels_cb=None, settings_
                     if b.hovered:
                         idx = i
 
-            if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+            elif ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
+                #  Login Button 
+                if login_rect.collidepoint(ev.pos):
+                    if audio: audio.play_select()
+                    current_user = show_login_prompt(screen, clock, font)
+                    user_score = get_score(current_user) if current_user else 0
+                    top_user, top_score = get_highest_score()
+                    continue
+
+                #  Menu Buttons 
                 for i, b in enumerate(buttons):
                     if b.rect.collidepoint(ev.pos):
                         if audio: audio.play_select()
                         txt = b.text
                         if txt == "Start Game":
+                            score = 0
                             if start_cb:
-                                if LAST_LEVEL_PATH and os.path.exists(LAST_LEVEL_PATH):
-                                    start_cb(LAST_LEVEL_PATH)
-                                else:
-                                    start_cb()
+                                path = LAST_LEVEL_PATH if LAST_LEVEL_PATH and os.path.exists(LAST_LEVEL_PATH) else None
+                                start_cb(path) if path else start_cb()
                             if audio: audio.play_music("game")
                             return "start"
-                        if txt == "Levels":
-                            if levels_cb:
-                                res = show_levels_menu(screen, clock, font, start_cb=levels_cb)
-                                if res == "start":
-                                    return "start"
-                        if txt == "Settings":
+                        elif txt == "Levels" and levels_cb:
+                            res = show_levels_menu(screen, clock, font, start_cb=levels_cb)
+                            if res == "start": return "start"
+                        elif txt == "Settings":
                             show_settings_menu(screen, clock, font)
-                        if txt == "Quit":
+                        elif txt == "Quit":
                             if audio: audio.stop_music()
                             return "quit"
 
-        #  Background / Visuals 
+        #  Background & Particles 
         draw_parallax(screen, t)
-        #  Floating Particles 
         for p in particles[:]:
             p[1] -= 0.3
             p[2] -= 1
@@ -295,58 +316,91 @@ def show_main_menu(screen, clock, font, start_cb=None, levels_cb=None, settings_
                 particles.remove(p)
             else:
                 pygame.draw.circle(screen, (180, 200, 255, p[2]), (int(p[0]), int(p[1])), 2)
-
         if random.random() < 0.05:
             particles.append([random.randint(0, WIDTH), HEIGHT, random.randint(100, 200)])
 
-        #  Animated Title 
-        elapsed = pygame.time.get_ticks() * 0.002
+        # Title & Subtitle 
+        elapsed = t * 0.002
         title_y = HEIGHT // 4 + math.sin(elapsed) * 6
         title_scale = 1 + math.sin(elapsed * 0.5) * 0.03
-
         title_font = pygame.font.Font(None, int(64 * title_scale))
         title_text = title_font.render("Plataforma", True, (255, 255, 255))
         title_rect = title_text.get_rect(center=(WIDTH // 2, title_y))
 
-        # Optional glow
+        # Glow effect
         glow = pygame.Surface((title_rect.width + 40, title_rect.height + 40), pygame.SRCALPHA)
         glow_center = (glow.get_width() // 2, glow.get_height() // 2)
-
         for i in range(20):
             radius = (title_rect.height // 2) + i
             alpha = max(0, 40 - i * 2)
             pygame.draw.circle(glow, (120, 180, 255, alpha), glow_center, radius)
-
         screen.blit(glow, (title_rect.centerx - glow_center[0], title_rect.centery - glow_center[1]))
         screen.blit(title_text, title_rect)
+        draw_text(screen, "a small experimental platformer", 20, WIDTH // 2, title_y + 42, color=(200, 200, 220))
 
-
-        #  Subtitle 
-        draw_text(
-            screen,
-            "a small experimental platformer",
-            20,
-            WIDTH // 2,
-            title_y + 42,
-            color=(200, 200, 220),
-        )
-
-        #  Buttons
+        #  Buttons 
         for i, b in enumerate(buttons):
             b.draw(screen, selected=(i == idx))
 
-        #  Footer 
-        footer = font.render(
-            "Use Arrows / WASD + Z/Enter or click",
-            True,
-            (200, 200, 220),
-        )
+        # Footer 
+        footer = font.render("Use Arrows / WASD + Z/Enter or click", True, (200, 200, 220))
         screen.blit(footer, (WIDTH // 2 - footer.get_width() // 2, HEIGHT - 44))
 
-        #  Fade-in 
-        alpha = max(0, 255 - int((pygame.time.get_ticks() - t0) * 0.6))
+        # Fade-in
+        alpha = max(0, 255 - int((t - t0) * 0.6))
         if alpha > 0:
             fade(screen, alpha)
+
+        # Login Button 
+        pygame.draw.rect(screen, (50, 60, 90), login_rect, border_radius=10)
+        draw_text(screen, "Logout" if current_user else "Login", 22, login_rect.centerx, login_rect.centery)
+
+        #  Score Info
+        if current_user:
+            info_x, info_y = 20, 20
+            pygame.draw.rect(screen, (40, 50, 80), (info_x - 10, info_y - 6, 250, 80), border_radius=10)
+            draw_text(screen, f"User: {current_user}", 20, info_x + 110, info_y + 12, color=(220, 240, 255))
+            draw_text(screen, f"Your Best: {user_score}", 20, info_x + 110, info_y + 36, color=(240, 220, 160))
+            draw_text(screen, f"Top: {top_user or 'N/A'} - {top_score}", 18, info_x + 110, info_y + 60, color=(190, 210, 240))
+        else:
+            draw_text(screen, "Login to save your score", 18, 180, 40, color=(180, 190, 210))
+            draw_text(screen, f"Top Player: {top_user or 'N/A'} ({top_score})", 18, 180, 62, color=(200, 210, 230))
+
+        pygame.display.flip()
+
+def show_login_prompt(screen, clock, font):
+    """Shows a popup text input for username login."""
+    username = ""
+    active = True
+
+    while active:
+        clock.tick(60)
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                return None
+            if ev.type == pygame.KEYDOWN:
+                if ev.key == pygame.K_RETURN:
+                    return username.strip() or None
+                elif ev.key == pygame.K_ESCAPE:
+                    return None
+                elif ev.key == pygame.K_BACKSPACE:
+                    username = username[:-1]
+                else:
+                    if len(username) < 15 and ev.unicode.isprintable():
+                        username += ev.unicode
+
+        #  Draw popup background 
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180))
+        screen.blit(overlay, (0, 0))
+
+        #  Draw input box 
+        draw_text(screen, "Enter Username", 36, WIDTH // 2, HEIGHT // 2 - 80)
+        pygame.draw.rect(screen, (80, 90, 120),
+                         (WIDTH // 2 - 150, HEIGHT // 2 - 20, 300, 40),
+                         border_radius=8)
+        draw_text(screen, username or "Type here...", 28,
+                  WIDTH // 2, HEIGHT // 2, color=(240, 240, 240))
 
         pygame.display.flip()
 
