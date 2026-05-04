@@ -1,7 +1,7 @@
-# Platformer Game
+# Platformer Game with voice input
 
 A simple platformer game built with **Pygame** featuring a heart system (3 lives).  
-Players lose a heart when making mistakes, and correct actions allow the character to continue.
+Players lose a heart when making mistakes, and correctly speaking the words would allow the character to continue.
 
 ## Features
 - Classic platformer mechanics (jump, move, avoid obstacles)
