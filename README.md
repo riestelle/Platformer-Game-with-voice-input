@@ -15,16 +15,23 @@ Players lose a heart when making mistakes, and correctly speaking the words woul
 
 ## Getting Started
 1. Clone the repository:
+```
 git clone https://github.com/riestelle/Platformer-Game-with-voice-input.git
-2. Create and activate a virtual environment:
+```
+1. Create and activate a virtual environment:
+```
 python -m venv venv
 source venv/bin/activate   # On macOS/Linux
 venv\Scripts\activate      # On Windows
-3. Install dependencies:
+```
+2. Install dependencies:
+```
 pip install -r requirements.txt
+```
 4. Run the game:
+```
 python main.py
-
+```
 
 ## Controls
 - **Arrow Left** → move left
